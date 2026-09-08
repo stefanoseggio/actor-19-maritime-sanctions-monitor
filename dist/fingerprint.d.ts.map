@@ -1,0 +1,1 @@
+{"version":3,"file":"fingerprint.d.ts","sourceRoot":"","sources":["../src/fingerprint.ts"],"names":[],"mappings":"AAEA,OAAO,KAAK,EAAE,eAAe,EAAE,MAAM,YAAY,CAAC;AAMlD,MAAM,WAAW,iBAAiB;IAC9B,4PAA4P;IAC5P,iBAAiB,EAAE,MAAM,CAAC;IAC1B,6MAA6M;IAC7M,kBAAkB,EAAE,MAAM,CAAC;CAC9B;AAED,wBAAgB,mBAAmB,CAAC,KAAK,EAAE,eAAe,GAAG,iBAAiB,CAmB7E"}

@@ -1,0 +1,42 @@
+{
+    "$schema": "https://apify.com/schemas/v1/input.ide.json",
+    "title": "Global Maritime & Vessel Sanctions Monitor Configuration",
+    "type": "object",
+    "schemaVersion": 1,
+    "properties": {
+        "maxItems": {
+            "title": "Max vessel records",
+            "type": "integer",
+            "description": "Hard cap on how many vessel-type SDN records to return this run, taken in the order OFAC lists them in the source feed.",
+            "default": 250,
+            "minimum": 1
+        },
+        "onlyNew": {
+            "title": "Delta mode - only new or changed vessel records since last run",
+            "type": "boolean",
+            "description": "When enabled, persists a content fingerprint per vessel (uid) between runs in this actor's own key-value store and returns only records that are new since the last run OR whose sanctions program(s) or other tracked fields changed since they were last seen - records identical to last time are skipped. Vessels no longer present in the current OFAC feed are always reported as DELISTED regardless of this setting (when the run was not itself truncated by maxItems - see the DELISTED section of README.md). Recommended for recurring monitoring; leave off for a full extraction of the current vessel-type SDN list.",
+            "default": false
+        },
+        "enrichWithUnConsolidatedList": {
+            "title": "Enrich with UN Security Council Consolidated List cross-reference",
+            "type": "boolean",
+            "description": "When enabled (default), additionally fetches the UN Security Council Consolidated Sanctions List and flags OFAC vessel records whose IMO number is also mentioned in a UN entity's designation text. Adds one extra live fetch and a linear scan of the UN list per run; disable for a faster OFAC-only run.",
+            "default": true
+        },
+        "programFilter": {
+            "title": "Filter by OFAC sanctions program",
+            "type": "array",
+            "description": "Optional: only return vessels whose Program list contains at least one of these OFAC program codes (case-insensitive substring match, e.g. \"IRAN\", \"DPRK2\", \"RUSSIA-EO14024\"). Leave empty to return vessels from all programs.",
+            "editor": "stringList",
+            "items": {
+                "type": "string"
+            }
+        },
+        "vesselNameContains": {
+            "title": "Filter by vessel name substring",
+            "type": "string",
+            "description": "Optional case-insensitive substring filter on the vessel's listed name, applied before maxItems. Useful for a narrow monitoring run against one vessel of interest.",
+            "editor": "textfield"
+        }
+    }
+}
