@@ -1,21 +1,24 @@
 {
-    "$schema": "https://apify.com/schemas/v1/actor.ide.json",
-    "actorSpecification": 1,
-    "name": "actor-19-maritime-sanctions-monitor",
-    "title": "Global Maritime & Vessel Sanctions Monitor",
-    "description": "Extracts sanctioned-vessel records from the OFAC SDN List (1,540 vessel entries), cross-referenced against the UN Consolidated List by IMO number. Paris MoU, Tokyo MoU, and IMO GISIS were checked and rejected as CAPTCHA/login-gated - see README.md.",
-    "version": "2.0",
-    "buildTag": "latest",
-    "minMemoryMbytes": 1024,
-    "maxMemoryMbytes": 4096,
-    "meta": {
-        "templateId": "ts-crawlee-cheerio",
-        "generatedBy": "Claude Code with Claude Sonnet 5"
-    },
-    "inputSchema": "./input_schema.json",
-    "outputSchema": "./output_schema.json",
-    "storages": {
-        "dataset": "./dataset_schema.json"
-    },
-    "changelog": "../CHANGELOG.md"
+  "$schema": "https://apify.com/schemas/v1/actor.ide.json",
+  "actorSpecification": 1,
+  "name": "actor-19-maritime-sanctions-monitor",
+  "title": "OFAC SDN + UN Consolidated - Vessel Sanctions Delta API",
+  "description": "Screens the US Treasury OFAC Specially Designated Nationals vessel list against the UN Security Council Consolidated List by IMO number, delivering normalized ship-sanctions records with cross-run change detection: new designations, program changes, and vessel delistings.",
+  "version": "2.0",
+  "buildTag": "latest",
+  "minMemoryMbytes": 1024,
+  "maxMemoryMbytes": 4096,
+  "meta": {
+    "templateId": "ts-crawlee-cheerio",
+    "generatedBy": "Claude Code with Claude Sonnet 5"
+  },
+  "inputSchema": "./input_schema.json",
+  "outputSchema": "./output_schema.json",
+  "storages": {
+    "dataset": "./dataset_schema.json"
+  },
+  "changelog": "../CHANGELOG.md",
+  "categories": [
+    "BUSINESS"
+  ]
 }

@@ -1,19 +1,16 @@
-# Global Maritime & Vessel Sanctions Monitor
+# Maritime Sanctions Watchdog - OFAC & UN Vessel Screening (Global Trade Compliance)
 
-Extracts sanctioned-vessel records from the **US Treasury OFAC Specially Designated Nationals (SDN) List**, cross-referenced against the **UN Security Council Consolidated Sanctions List** by IMO number, normalized into one clean 18-field schema. Now with real cross-run change detection - including delisting alerts.
+## Executive Value Proposition
 
-## Why use this Actor?
+The US Treasury's OFAC Specially Designated Nationals (SDN) list runs to roughly 19,000 entries in a single raw XML feed, of which about 1,540 are vessel-type designations - and the UN Security Council Consolidated Sanctions List carries no dedicated vessel record at all, only free-text IMO mentions buried in individual/entity remarks. Manually pulling both feeds, filtering to vessels, and cross-checking IMO numbers by eye is slow, easy to get wrong, and impractical to repeat on a schedule. This Actor automates that entire lookup - one run turns two raw government/UN feeds into one normalized, IMO-cross-referenced vessel dataset, and recurring runs add real change detection (new designations, sanctions-program changes, and delistings) instead of a manual re-diff every time.
 
-- **Real compliance-grade coverage, honestly scoped.** Paris MoU, Tokyo MoU, and IMO GISIS were all live-checked and explicitly rejected because they're CAPTCHA- or login-gated (see "What was checked and rejected" below) - this Actor only uses genuinely open, unauthenticated sources, and says so plainly rather than force-scraping a gated site.
-- **Change detection that matters for sanctions monitoring.** Enable `onlyNew` and get notified when a vessel is newly designated, has its sanctions program(s) change, or - uniquely for this domain - is **delisted** entirely.
-- **Cross-referenced, not just extracted.** Every vessel's IMO number is checked against the UN Consolidated List, flagging entries with independent international corroboration.
-- **Trade compliance, insurance, and shipping/logistics teams**: screen counterparties, cargo, or fleet composition against a live sanctions feed without building your own OFAC parser.
+## Use Cases
 
-## How to use it
+- **Vendor and counterparty KYC screening.** Before onboarding a shipping counterparty, charterer, or logistics vendor, screen the vessels they operate against the current OFAC vessel-type SDN list and see immediately whether any carry independent UN corroboration via IMO number.
+- **Shipping and logistics risk checks.** Freight forwarders, marine insurers, and charterers can use `vesselNameContains` to check one vessel of interest before booking cargo or binding coverage, or run `programFilter` (e.g. `["IRAN"]`, `["RUSSIA-EO14024"]`) to watch an entire sanctions program relevant to a trade lane.
+- **Export-compliance due diligence monitoring.** Compliance teams running recurring screening programs can schedule this Actor with `onlyNew` enabled to get only what changed since the last run - new sanctions, program additions/removals, and delistings - instead of re-reviewing the full list every cycle.
 
-1. Run it with the default input for a full extraction of the current OFAC vessel-type SDN list (with UN cross-reference enabled).
-2. Optionally filter by `programFilter` (e.g. `["IRAN"]`) or `vesselNameContains` for a narrower watch.
-3. For recurring monitoring, enable `onlyNew` on a scheduled task - see "Delta mode" below.
+## Input
 
 ```json
 {
@@ -23,17 +20,17 @@ Extracts sanctioned-vessel records from the **US Treasury OFAC Specially Designa
 }
 ```
 
-## Input
-
 | Field | Type | Default | Description |
 |---|---|---|---|
-| `maxItems` | integer | `250` | Hard cap on vessel records returned this run. |
-| `onlyNew` | boolean | `false` | Delta mode - only new or changed records since the last run. See "Delta mode" below. |
-| `enrichWithUnConsolidatedList` | boolean | `true` | Cross-reference each vessel's IMO number against the UN Consolidated List. |
-| `programFilter` | array | - | Only vessels under one or more OFAC program codes (e.g. `"IRAN"`, `"DPRK2"`). |
-| `vesselNameContains` | string | - | Case-insensitive substring filter on vessel name. |
+| `maxItems` | integer | `250` | Hard cap on how many vessel-type SDN records to return this run, taken in the order OFAC lists them in the source feed. |
+| `onlyNew` | boolean | `false` | Delta mode - persists a content fingerprint per vessel between runs and returns only records that are new or changed since the last run. Vessels no longer present in the current OFAC feed are always reported as `DELISTED` regardless of this setting (unless the run was truncated by `maxItems`). Recommended for recurring monitoring. |
+| `enrichWithUnConsolidatedList` | boolean | `true` | Cross-references each vessel's IMO number against the UN Security Council Consolidated Sanctions List. Disable for a faster OFAC-only run. |
+| `programFilter` | array of strings | - | Optional: only return vessels whose Program list contains at least one of these OFAC program codes (case-insensitive substring match, e.g. `"IRAN"`, `"DPRK2"`, `"RUSSIA-EO14024"`). Leave empty to return vessels from all programs. |
+| `vesselNameContains` | string | - | Optional case-insensitive substring filter on the vessel's listed name, applied before `maxItems`. Useful for a narrow monitoring run against one vessel of interest. |
 
 ## Output
+
+Each dataset item is the vessel's native OFAC record (name, IMO/MMSI/other identifiers, sanctions programs, flag, tonnage, owner, remarks, and AKA names) plus the UN cross-reference result and this Actor's own tracking envelope:
 
 ```json
 {
@@ -51,36 +48,22 @@ Extracts sanctioned-vessel records from the **US Treasury OFAC Specially Designa
 }
 ```
 
-You can download the dataset in various formats such as JSON, HTML, CSV, or Excel.
+`event_type` is one of `SANCTION` (first sighting), `STATUS_CHANGE` (the vessel's sanctions program(s) changed since last seen), `UPDATED` (some other tracked field changed), `SNAPSHOT_NO_DIFF` (identical to last time - only delivered when `onlyNew` is off), or `DELISTED` (a previously-seen vessel is no longer in the current OFAC feed). You can download the dataset in JSON, CSV, Excel, or other formats from the Apify platform.
 
-## Delta mode - change detection, including delistings
+## Reliability
 
-Enable `onlyNew: true` on a scheduled task and this Actor persists a fingerprint per vessel across runs:
-
-- **`SANCTION`** - first time this vessel has been seen.
-- **`STATUS_CHANGE`** - the vessel's sanctions program(s) changed since last time (e.g. added to a new program).
-- **`UPDATED`** - some other field changed (name, flag, owner, IMO, etc.) but programs didn't.
-- **`SNAPSHOT_NO_DIFF`** - identical to last time; skipped from delivery when `onlyNew` is on.
-- **`DELISTED`** - a vessel previously seen is no longer in the current OFAC feed. The OFAC SDN List is always fetched as one complete file (never paginated), so this is a genuine, trustworthy signal - not a guess. Always delivered regardless of `onlyNew`, and skipped only if `maxItems` truncated this particular run before the full list was walked (logged when this happens).
+- **Retrying HTTP layer.** Both source feeds are fetched with exponential-backoff retry (up to 4 retries, doubling from a 1-second base delay), with HTTP 429/503 explicitly treated as retryable alongside network failures and other non-2xx statuses. Both OFAC and UN endpoints redirect (302) to a pre-signed storage URL before returning the actual file; the client follows redirects by default.
+- **A delta-state failure never blocks a fresh extraction.** Loading the persisted cross-run fingerprint state is a real network call to the Apify platform's key-value store and is treated as fallible: if it fails, the run logs the error and falls back to a cold-start (empty) delta state rather than crashing before a single record is fetched.
+- **Extraction success is decoupled from state-persistence success.** If saving the updated delta state fails after a run's records were already pushed, that failure is logged on its own and does not retroactively mark an already-successful extraction as failed, and does not push a spurious error record on top of real data already in the dataset.
+- **Process-level safety net.** Top-level `unhandledRejection`/`uncaughtException` handlers guarantee any failure outside the main try/catch blocks is written to the captured log stream before the process exits, rather than exiting silently.
+- **Truncation-aware delisting logic.** The OFAC feed is always fetched and parsed in full - never paginated - so a previously-seen vessel that's genuinely absent is a trustworthy `DELISTED` signal, not a guess. If `maxItems` caps delivery before the full feed is walked, `DELISTED` detection is skipped for that run (and logged) and the vessel-fingerprint state is merged rather than replaced, so vessels beyond the cutoff are never wrongly reported as delisted next run.
+- **Scoped UN cross-referencing.** IMO numbers are matched against the UN Consolidated List per-record (within each entity/individual's own remarks field), not via a flat whole-document scan, avoiding misattributing an IMO number to the wrong neighboring entity.
+- **Source integrity.** Paris MoU/EMSA THETIS, Tokyo MoU/APCIS, and IMO GISIS were live-checked as candidate sources and excluded because they sit behind a login wall, a CAPTCHA-protected search form, or a robots.txt-restricted, registration-gated module, respectively. Only the two genuinely open, unauthenticated OFAC and UN feeds are used - no CAPTCHA-solving, login-wall bypass, or session spoofing anywhere in this Actor.
 
 ## Pricing
 
-Pay-per-event: **$0.0005 per delivered record**, plus a small one-time actor-start charge. Both source feeds are plain unauthenticated file downloads with no per-record request cost.
+Pay-per-event pricing: **$0.0005 per delivered record**, plus a small one-time actor-start charge. Both source feeds are plain unauthenticated file downloads with no per-record request cost, so there's no proxy or per-page fetch overhead passed through in the price.
 
-## What was checked and rejected
+## Support & Enterprise SLA
 
-| Source | Status | Why |
-|---|---|---|
-| Paris MoU / EMSA THETIS | Rejected | Redirects into a Keycloak OpenID Connect login wall on every request |
-| Tokyo MoU / APCIS | Rejected | The public search form carries a literal CAPTCHA field |
-| IMO GISIS | Not used | `robots.txt` disallows the relevant path; the public module is session/registration-gated for real search |
-
-No CAPTCHA-solving, no fingerprint spoofing, no login-wall bypass anywhere in this Actor - these sources were investigated and honestly excluded rather than force-scraped.
-
-## Known limitations
-
-- `DELISTED` detection is skipped on any run where `maxItems` cut off the walk before the full feed was read - logged when this happens, never silently guessed at.
-- No monetary/value fields - an SDN designation blocks a vessel's assets, it doesn't itself carry a dollar amount.
-- The UN Consolidated List has no dedicated vessel record type - cross-referencing is IMO-number-based only, not a full UN vessel record.
-
-Questions or a source-coverage request? Use the Issues tab - custom extensions are available.
+This Actor is built and maintained by an independent developer, not a formal enterprise vendor - there is no contractual SLA. Issues, bugs, and source-coverage requests are handled through the Apify Store's Issues tab and are typically triaged within 48 hours. If you need a new data source evaluated or a schema extension, open an issue there with details and it will be reviewed against the same compliance doctrine (no CAPTCHA-solving, no login-wall bypass) used to build the rest of this Actor.
