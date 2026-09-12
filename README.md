@@ -1,5 +1,12 @@
 # Maritime Sanctions Watchdog - OFAC & UN Vessel Screening (Global Trade Compliance)
 
+[![Built for Apify](https://img.shields.io/badge/Built%20for-Apify-00C0F3?style=flat-square&logo=apify&logoColor=white)](https://apify.com)
+[![Pay-Per-Event pricing](https://img.shields.io/badge/pay--per--event-%240.0005%2Frecord-3DDC97?style=flat-square)](#pricing-pay-per-event)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Apache 2.0 License](https://img.shields.io/badge/license-Apache%202.0-blue?style=flat-square)](./LICENSE)
+
+[![Run on Apify](https://apify.com/img/run-on-apify.svg)](https://apify.com/stefano_seggio/actor-19-maritime-sanctions-monitor)
+
 ## Executive Value Proposition
 
 The US Treasury's OFAC Specially Designated Nationals (SDN) list runs to roughly 19,000 entries in a single raw XML feed, of which about 1,540 are vessel-type designations - and the UN Security Council Consolidated Sanctions List carries no dedicated vessel record at all, only free-text IMO mentions buried in individual/entity remarks. Manually pulling both feeds, filtering to vessels, and cross-checking IMO numbers by eye is slow, easy to get wrong, and impractical to repeat on a schedule. This Actor automates that entire lookup - one run turns two raw government/UN feeds into one normalized, IMO-cross-referenced vessel dataset, and recurring runs add real change detection (new designations, sanctions-program changes, and delistings) instead of a manual re-diff every time.
@@ -9,6 +16,29 @@ The US Treasury's OFAC Specially Designated Nationals (SDN) list runs to roughly
 - **Vendor and counterparty KYC screening.** Before onboarding a shipping counterparty, charterer, or logistics vendor, screen the vessels they operate against the current OFAC vessel-type SDN list and see immediately whether any carry independent UN corroboration via IMO number.
 - **Shipping and logistics risk checks.** Freight forwarders, marine insurers, and charterers can use `vesselNameContains` to check one vessel of interest before booking cargo or binding coverage, or run `programFilter` (e.g. `["IRAN"]`, `["RUSSIA-EO14024"]`) to watch an entire sanctions program relevant to a trade lane.
 - **Export-compliance due diligence monitoring.** Compliance teams running recurring screening programs can schedule this Actor with `onlyNew` enabled to get only what changed since the last run - new sanctions, program additions/removals, and delistings - instead of re-reviewing the full list every cycle.
+
+## Quick Start
+
+Run it from the [Apify CLI](https://docs.apify.com/cli) once you're authenticated (`apify login`):
+
+```bash
+apify call actor-19-maritime-sanctions-monitor --input '{
+  "maxItems": 100,
+  "onlyNew": true,
+  "enrichWithUnConsolidatedList": true,
+  "programFilter": ["IRAN", "RUSSIA-EO14024"]
+}'
+```
+
+Or via the [Apify API](https://docs.apify.com/api/v2) with `curl`:
+
+```bash
+curl -X POST "https://api.apify.com/v2/acts/dR68wHyuOLS2WEhmo/run-sync-get-dataset-items?token=$APIFY_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"maxItems": 100, "onlyNew": true, "enrichWithUnConsolidatedList": true}'
+```
+
+Full SDK examples for Node.js and Python are in [`examples/`](./examples).
 
 ## Input
 
@@ -60,10 +90,20 @@ Each dataset item is the vessel's native OFAC record (name, IMO/MMSI/other ident
 - **Scoped UN cross-referencing.** IMO numbers are matched against the UN Consolidated List per-record (within each entity/individual's own remarks field), not via a flat whole-document scan, avoiding misattributing an IMO number to the wrong neighboring entity.
 - **Source integrity.** Paris MoU/EMSA THETIS, Tokyo MoU/APCIS, and IMO GISIS were live-checked as candidate sources and excluded because they sit behind a login wall, a CAPTCHA-protected search form, or a robots.txt-restricted, registration-gated module, respectively. Only the two genuinely open, unauthenticated OFAC and UN feeds are used - no CAPTCHA-solving, login-wall bypass, or session spoofing anywhere in this Actor.
 
-## Pricing
+## Pricing (Pay-Per-Event)
 
-Pay-per-event pricing: **$0.0005 per delivered record**, plus a small one-time actor-start charge. Both source feeds are plain unauthenticated file downloads with no per-record request cost, so there's no proxy or per-page fetch overhead passed through in the price.
+This Actor is monetized with Apify's [Pay-Per-Event](https://docs.apify.com/platform/actors/running/actors-in-store#pricing-models) model: you pay only for data actually delivered to the dataset, not for platform compute time.
+
+| Event name | Event title | Price |
+|---|---|---|
+| `result` | Sanctioned Vessel Record | **$0.0005** per event |
+
+Every dataset item pushed - `SANCTION`, `STATUS_CHANGE`, `UPDATED`, or `DELISTED` - fires exactly one `result` event. Both source feeds (OFAC's SDN.XML and the UN Consolidated List) are plain unauthenticated file downloads with no per-record request cost, so there's no proxy or per-page fetch overhead passed through in the price.
 
 ## Support & Enterprise SLA
 
 This Actor is built and maintained by an independent developer, not a formal enterprise vendor - there is no contractual SLA. Issues, bugs, and source-coverage requests are handled through the Apify Store's Issues tab and are typically triaged within 48 hours. If you need a new data source evaluated or a schema extension, open an issue there with details and it will be reviewed against the same compliance doctrine (no CAPTCHA-solving, no login-wall bypass) used to build the rest of this Actor.
+
+---
+
+This Actor is part of **Delta Registry** - pay-per-event regulatory & compliance data infrastructure built and operated by Stefano Seggio. For professional inquiries or enterprise licensing, connect on [LinkedIn](https://www.linkedin.com/in/stefanoseggio-deltaregistry); for the rest of the fleet, see [github.com/stefanoseggio](https://github.com/stefanoseggio).
