@@ -90,6 +90,41 @@ Each dataset item is the vessel's native OFAC record (name, IMO/MMSI/other ident
 - **Scoped UN cross-referencing.** IMO numbers are matched against the UN Consolidated List per-record (within each entity/individual's own remarks field), not via a flat whole-document scan, avoiding misattributing an IMO number to the wrong neighboring entity.
 - **Source integrity.** Paris MoU/EMSA THETIS, Tokyo MoU/APCIS, and IMO GISIS were live-checked as candidate sources and excluded because they sit behind a login wall, a CAPTCHA-protected search form, or a robots.txt-restricted, registration-gated module, respectively. Only the two genuinely open, unauthenticated OFAC and UN feeds are used - no CAPTCHA-solving, login-wall bypass, or session spoofing anywhere in this Actor.
 
+## Instant Terminal Run (cURL)
+
+Runs synchronously and returns the resulting dataset items directly in the response - no polling needed. Get your token from [console.apify.com/settings/integrations](https://console.apify.com/settings/integrations).
+
+```bash
+curl -X POST "https://api.apify.com/v2/acts/dR68wHyuOLS2WEhmo/run-sync-get-dataset-items?token=<YOUR_API_TOKEN>" \
+  -H "Content-Type: application/json" \
+  -d '{
+  "maxItems": 50,
+  "onlyNew": true
+}'
+```
+
+## Sample Extracted Dataset (JSON)
+
+One real record from this Actor's own dataset, matching `.actor/dataset_schema.json`:
+
+```json
+{
+  "uid": "15036",
+  "vesselName": "ARTAVIL",
+  "programs": [
+    "IRAN"
+  ],
+  "imoNumber": "9187629",
+  "vesselFlag": "Iran",
+  "crossReferencedInUnConsolidatedList": true,
+  "record_id": "OFAC-SDN-15036",
+  "event_type": "SANCTION",
+  "scraped_at": "2026-09-08T14:00:00.000Z",
+  "is_new": true,
+  "source_url": "https://sanctionssearch.ofac.treas.gov/Details.aspx?id=15036"
+}
+```
+
 ## Pricing (Pay-Per-Event)
 
 This Actor is monetized with Apify's [Pay-Per-Event](https://docs.apify.com/platform/actors/running/actors-in-store#pricing-models) model: you pay only for data actually delivered to the dataset, not for platform compute time.
