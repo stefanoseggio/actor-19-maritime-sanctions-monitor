@@ -48,13 +48,14 @@ The US Treasury's OFAC Specially Designated Nationals (SDN) list runs to roughly
 
 ### Pricing (Pay-Per-Event)
 
-This Actor is monetized with Apify's [Pay-Per-Event](https://docs.apify.com/platform/actors/running/actors-in-store#pricing-models) model: you pay only for data actually delivered to the dataset, not for platform compute time.
+This Actor is monetized with Apify's [Pay-Per-Event](https://docs.apify.com/platform/actors/running/actors-in-store#pricing-models) model: pricing is per discrete event, not per platform-compute-second. Two event types are configured, verified live against this Actor's own Apify API pricing resource:
 
 | Event name | Event title | What triggers it | Price |
 |---|---|---|---|
+| `apify-actor-start` | Actor Start | Once per run, when the Actor starts - a platform-standard PPE event, charged at one unit per GB of configured memory (minimum one unit). This Actor runs at 2048 MB, so 2 units fire per run. | **$0.00005** per unit (**$0.0001** per run at this Actor's memory tier) |
 | `result` | Sanctioned Vessel Record | Every dataset item pushed - a `SANCTION`, `STATUS_CHANGE`, `UPDATED`, or `DELISTED` record | **$0.0005** per event |
 
-Both source feeds (OFAC's SDN.XML and the UN Consolidated List) are plain unauthenticated file downloads with no per-record request cost, so there's no proxy or per-page fetch overhead passed through in the price.
+Both source feeds (OFAC's SDN.XML and the UN Consolidated List) are plain unauthenticated file downloads with no per-record request cost, so there's no proxy or per-page fetch overhead passed through in the price beyond the fixed per-run `apify-actor-start` charge above.
 
 ### How unchanged-record suppression actually works
 
