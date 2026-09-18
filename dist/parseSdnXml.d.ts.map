@@ -1,0 +1,1 @@
+{"version":3,"file":"parseSdnXml.d.ts","sourceRoot":"","sources":["../src/parseSdnXml.ts"],"names":[],"mappings":"AAEA,OAAO,KAAK,EAAW,eAAe,EAAW,MAAM,YAAY,CAAC;AAYpE;;;;;;;;;GASG;AACH,wBAAgB,WAAW,CAAC,GAAG,EAAE,MAAM,GAAG;IAAE,OAAO,EAAE,eAAe,EAAE,CAAC;IAAC,cAAc,EAAE,MAAM,CAAA;CAAE,CAkG/F"}
