@@ -9,6 +9,31 @@
 
 > This Actor monitors the US Treasury OFAC SDN vessel sanctions list cross-referenced against the UN Security Council Consolidated List (Global — OFAC / UN jurisdiction, by IMO number), and runs whenever you trigger it or schedule it on your own Apify Scheduler — there is no fixed operator-side cadence.
 
+## Architecture
+
+This diagram reflects the actual real module call graph in [`src/`](./src) — every node names the real file that implements it, not an illustrative simplification.
+
+```mermaid
+flowchart TD
+    A[OFAC SDN.XML feed] --> C["fetchVesselRecords.ts"]
+    B[UN Security Council<br/>Consolidated List] --> C
+    C --> D["parseSdnXml.ts /<br/>unConsolidatedList.ts"]
+    D --> E["fingerprint.ts<br/>statusFingerprint + contentFingerprint"]
+    S[("state.ts<br/>Apify Key-Value Store<br/>(persisted delta state)")] -.load prior fingerprints.-> E
+    E --> F{"delta.ts<br/>compare vs prior state"}
+    F -->|first sighting| G1["SANCTION"]
+    F -->|program changed| G2["STATUS_CHANGE"]
+    F -->|other field changed| G3["UPDATED"]
+    F -->|identical| G4["SNAPSHOT_NO_DIFF<br/>(never billed)"]
+    F -->|missing from feed| G5["DELISTED"]
+    G1 --> H["umsNormalizer.ts"]
+    G2 --> H
+    G3 --> H
+    G5 --> H
+    H --> I["Actor.pushData()<br/>Apify dataset<br/>PPE billed: $0.0005/event"]
+    F -.saveState.-> S
+```
+
 ## Executive Value Proposition
 
 The US Treasury's OFAC Specially Designated Nationals (SDN) list runs to roughly 19,000 entries in a single raw XML feed, of which about 1,540 are vessel-type designations - and the UN Security Council Consolidated Sanctions List carries no dedicated vessel record at all, only free-text IMO mentions buried in individual/entity remarks. Manually pulling both feeds, filtering to vessels, and cross-checking IMO numbers by eye is slow, easy to get wrong, and impractical to repeat on a schedule. This Actor automates that entire lookup - one run turns two raw government/UN feeds into one normalized, IMO-cross-referenced vessel dataset, and recurring runs add real change detection (new designations, sanctions-program changes, and delistings) instead of a manual re-diff every time.
@@ -176,6 +201,26 @@ Each dataset item also carries the vessel's other native OFAC fields (MMSI, othe
 | `source_url` | string | Per-vessel permalink on OFAC's own public Sanctions List Search tool. |
 
 The full field list (including `unConsolidatedListMatches`, `otherIds`, `akaNames`, and the fleet-standard normalized envelope) is in [`.actor/dataset_schema.json`](./.actor/dataset_schema.json).
+
+## Environment Variables
+
+**None required.** This Actor takes zero third-party API keys or BYOK secrets - both source feeds (OFAC's SDN.XML and the UN Security Council Consolidated List) are open, unauthenticated downloads. The only environment variables present at runtime are the standard ones Apify's platform and SDK inject automatically into every Actor run (`APIFY_TOKEN`, `APIFY_ACTOR_ID`, `APIFY_DEFAULT_KEY_VALUE_STORE_ID`, etc.) - these are managed by the `apify` npm package and the Apify platform itself, never set manually by you or read directly by this Actor's own code.
+
+## Operational Telemetry Limits
+
+Real, measured values from this Actor's own production run history and current live platform configuration - not modeled or estimated:
+
+| Metric | Value | Basis |
+|---|---|---|
+| Configured timeout (`defaultRunOptions.timeoutSecs`) | **300s** | Set from real telemetry (see below), not the Apify platform default of 3600s. |
+| Configured memory (`defaultRunOptions.memoryMbytes`) | **2048 MB** | ~3.5x the real observed peak, rounded to the nearest Apify memory tier. |
+| Real max observed runtime | **6.8s** (n=3 production runs) | Pulled from each run's own `stats.runTimeSecs` via the Apify API. |
+| Real avg observed runtime | **6.5s** (n=3) | Same source. |
+| Real peak memory used | **586 MB** (n=3) | From each run's own `stats.memMaxBytes`. |
+| Effective safety margin | **~44x** | 300s timeout vs. 6.8s worst observed run. |
+| Concurrency | Not configurable at the platform level | Apify's `defaultRunOptions` has no `concurrency` field - confirmed by inspecting the full Actor API resource. This Actor makes no internal concurrent-fetch parameter either (both source feeds are fetched sequentially, not paginated/fanned out). |
+
+These figures were established via a fleet-wide real-telemetry audit (all 28 actors in the wider Delta Registry fleet), not set once at Actor creation and left unexamined - see this repository's own run history via `apify api get "acts/stefano_seggio~actor-19-maritime-sanctions-monitor/runs"` to reproduce.
 
 ## Reliability
 
