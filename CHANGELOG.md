@@ -6,6 +6,23 @@
 
 - **Malformed/truncated-but-HTTP-200 OFAC fetch could wipe delta state and falsely mark every tracked vessel DELISTED.** `src/parseSdnXml.ts` never distinguished "the feed genuinely has 0 vessels today" from "the response parsed to 0 entries because it wasn't really the SDN.XML feed" (a bot-check/error/redirect-target page, or a download truncated mid-stream all return HTTP 200). Since `fetchVesselRecords.ts`'s DELISTED computation and `main.ts`'s state-replace path are both gated only on `truncatedByMaxItems` - a flag that only fires on a `maxItems` delivery cap, never on a broken fetch - a bad response with 0 (or dramatically reduced) vessel entries fell straight through to "every previously-tracked vessel is now delisted" plus a full state replace with the (empty) result, silently erasing the persisted census. Fixed with a new `suspectedFetchFailure` sanity guard: `parseSdnXml()` now also reports `totalEntryCount` (every `<sdnEntry>` of any sdnType) and `declaredRecordCount` (the feed's own `<Record_Count>` metadata); `fetchVesselRecords()` trusts a zero-vessel reading only when those two agree (a real, complete document), and treats a non-zero reading that crashed to less than half of the previously-tracked count as suspicious regardless (OFAC vessel delistings are historically sparse, never a single-run mass wipe). When `suspectedFetchFailure` is true, DELISTED detection is skipped and `main.ts` merges onto prior state instead of replacing it - exactly the existing `truncatedByMaxItems` discipline, extended to cover a broken fetch instead of only a `maxItems` cap. Covered by new tests in `test/fetchVesselRecords.test.ts` for the malformed-empty-response case, the genuinely-empty-and-structurally-consistent case (proving a real empty/closed day still works), and the non-zero-but-crashed case.
 
+## [2.1.0](https://github.com/stefanoseggio/actor-19-maritime-sanctions-monitor/compare/actor-19-maritime-sanctions-monitor-v2.0.0...actor-19-maritime-sanctions-monitor-v2.1.0) (2026-09-19)
+
+
+### Features
+
+* standardize on multi-stage Dockerfile builder pattern ([#10](https://github.com/stefanoseggio/actor-19-maritime-sanctions-monitor/issues/10)) ([6ac9e98](https://github.com/stefanoseggio/actor-19-maritime-sanctions-monitor/commit/6ac9e98d105665cf7ecb83aacf10029d163ac2e9))
+* V2 delta engine with real DELISTED detection (2.0.0) ([207e0f0](https://github.com/stefanoseggio/actor-19-maritime-sanctions-monitor/commit/207e0f0bfed69adc4669da55c5e640a7c3deb620))
+
+
+### Bug Fixes
+
+* bump transitive adm-zip to 0.6.1, resolving a HIGH-severity CVE ([#12](https://github.com/stefanoseggio/actor-19-maritime-sanctions-monitor/issues/12)) ([79039df](https://github.com/stefanoseggio/actor-19-maritime-sanctions-monitor/commit/79039dfb84bf54602215af0b5d3d1df6d4408bfb))
+* **ci:** pass RELEASE_PLEASE_TOKEN so release PRs skip the bot-approval gate ([90217c8](https://github.com/stefanoseggio/actor-19-maritime-sanctions-monitor/commit/90217c82b5320dba0d584a02a98fdf3feeb1d5e8))
+* correct dataset_schema.json field-name drift and complete PPE pricing disclosure ([208e75f](https://github.com/stefanoseggio/actor-19-maritime-sanctions-monitor/commit/208e75f3e45407d62af9381e46357c87634d2c85))
+* guard against a malformed/truncated-but-200 OFAC fetch wiping delta state ([#11](https://github.com/stefanoseggio/actor-19-maritime-sanctions-monitor/issues/11)) ([fa3e333](https://github.com/stefanoseggio/actor-19-maritime-sanctions-monitor/commit/fa3e333cdc06fb0e01a209146b8efba320fd9b31))
+* restore dist/ tracking (regression from repo-standardization pass) ([#9](https://github.com/stefanoseggio/actor-19-maritime-sanctions-monitor/issues/9)) ([9152dc0](https://github.com/stefanoseggio/actor-19-maritime-sanctions-monitor/commit/9152dc0f47a89f86bd961a5fb2956aa6fb9d5ecc))
+
 ## 2.0.0 - 2026-09-08
 
 ### Added
