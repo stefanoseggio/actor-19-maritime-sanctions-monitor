@@ -84,6 +84,14 @@
  * applies here.
  */
 
+import { Impit } from 'impit';
+
+// One Impit instance per actor run: it holds the connection pool and TLS
+// session cache, and gives every request a real, internally-consistent
+// Chrome TLS/HTTP2 fingerprint instead of Node's native (and distinctively
+// bot-shaped) one - see AGENTS.md for why this was added.
+const impit = new Impit({ browser: 'chrome' });
+
 async function sleep(ms: number): Promise<void> {
     return new Promise((resolve) => {
         setTimeout(resolve, ms);
@@ -106,7 +114,7 @@ export async function fetchTextWithRetry(url: string, maxRetries = 4, baseDelayM
     let lastError: Error = new Error('unreachable');
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
         try {
-            const response = await fetch(url, { redirect: 'follow' });
+            const response = await impit.fetch(url, { redirect: 'follow' });
             if (response.status === 429 || response.status === 503) {
                 throw new Error(`HTTP ${response.status} (rate limited / temporarily unavailable) for ${url}`);
             }
