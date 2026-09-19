@@ -17,19 +17,42 @@ function textOrNull(value: string | undefined | null): string | null {
  * http.ts's verified-target comment block) into typed vessel entries,
  * filtering out every non-vessel sdnType (Individual, Entity, Aircraft).
  *
+ * Also surfaces two structural signals used by fetchVesselRecords.ts's
+ * suspected-fetch-failure guard, independent of how many Vessel entries
+ * came out the other end:
+ *   - `totalEntryCount`: every <sdnEntry> element found, of ANY sdnType
+ *     (Individual/Entity/Aircraft/Vessel) - the real feed's vessels are a
+ *     small (~8%) slice of ~19,300 total entries, so this is a much larger,
+ *     more stable number than the vessel-only count and a good signal for
+ *     "did this response actually contain SDN entries at all".
+ *   - `declaredRecordCount`: the feed's own <publshInformation>
+ *     <Record_Count> value - present in every genuine SDN.XML fetch - used
+ *     to check internal consistency (does the file's own claimed size match
+ *     how many entries were actually parsed out of it) rather than trusting
+ *     the parsed entry count in isolation.
+ *
  * Uses cheerio in xmlMode - the document's default xmlns is unprefixed, so
  * plain tag-name selectors (`sdnEntry`, `uid`, ...) match exactly as they
  * would against the equivalent HTML-shaped markup cheerio is normally used
  * for elsewhere in this fleet (see uk-hse-enforcement-monitor's parsers/).
  */
-export function parseSdnXml(xml: string): { entries: OfacVesselEntry[]; publishDateRaw: string } {
+export function parseSdnXml(xml: string): {
+    entries: OfacVesselEntry[];
+    publishDateRaw: string;
+    totalEntryCount: number;
+    declaredRecordCount: number | null;
+} {
     const $ = cheerio.load(xml, { xmlMode: true });
 
     const publishDateRaw = textOrNull($('publshInformation Publish_Date').first().text()) ?? '';
+    const recordCountRaw = textOrNull($('publshInformation Record_Count').first().text());
+    const declaredRecordCount = recordCountRaw !== null && /^\d+$/.test(recordCountRaw) ? Number(recordCountRaw) : null;
 
     const entries: OfacVesselEntry[] = [];
+    let totalEntryCount = 0;
 
     $('sdnEntry').each((_index, element) => {
+        totalEntryCount += 1;
         const $entry = $(element);
         const sdnType = textOrNull($entry.children('sdnType').first().text());
         if (!sdnType || sdnType.toLowerCase() !== 'vessel') return;
@@ -119,5 +142,5 @@ export function parseSdnXml(xml: string): { entries: OfacVesselEntry[]; publishD
         });
     });
 
-    return { entries, publishDateRaw };
+    return { entries, publishDateRaw, totalEntryCount, declaredRecordCount };
 }
