@@ -1,1 +1,0 @@
-{"version":3,"file":"delta.d.ts","sourceRoot":"","sources":["../src/delta.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,iBAAiB,EAAE,MAAM,kBAAkB,CAAC;AAE1D;;;;;;;;;;;;;;GAcG;AACH,MAAM,MAAM,eAAe,GAAG,UAAU,GAAG,eAAe,GAAG,SAAS,GAAG,kBAAkB,GAAG,UAAU,CAAC;AAEzG,wBAAgB,oBAAoB,CAAC,QAAQ,EAAE,iBAAiB,GAAG,SAAS,EAAE,OAAO,EAAE,iBAAiB,GAAG,OAAO,CAAC,eAAe,EAAE,UAAU,CAAC,CAK9I"}
