@@ -2,6 +2,25 @@
 
 Global Maritime & Vessel Sanctions Monitor. Extracts sanctioned-vessel records from the **US Treasury OFAC Specially Designated Nationals (SDN) List** (`sanctionslistservice.ofac.treas.gov`, plain unauthenticated JSON/XML, ~29MB per fetch, ~1,540 vessel entries as of the original build), optionally cross-referenced against the **UN Security Council Consolidated Sanctions List** by IMO number. Paris MoU, Tokyo MoU, and IMO GISIS were live-checked and rejected as CAPTCHA/login-gated (Paris MoU/Tokyo MoU both proxy through EMSA THETIS, a real Keycloak OAuth login wall) - see `src/http.ts`'s header comment for the full verification record.
 
+## HTTP transport: `impit`, not the native `fetch`
+
+`src/http.ts`'s `fetchTextWithRetry` calls a module-level `Impit` instance
+(`new Impit({ browser: 'chrome' })`, from the `impit` package) instead of
+the global `fetch` - added 2026-09-19 as a fleet-wide TLS-fingerprint-
+hardening pilot (proactive hardening, not a bug fix - Node's `fetch` isn't
+deprecated). Both live sources (OFAC SDN.XML and the UN Consolidated List)
+re-verified reachable through the new transport this session (~29MB and
+~2.1MB real downloads, both parsed successfully). No test-mocking changes
+were needed for this actor: its only `src/http.ts`-adjacent unit test
+(`test/fetchVesselRecords.test.ts`) mocks `fetchTextWithRetry` directly via
+`vi.mock('../src/http.js', ...)`, never the global `fetch` or `impit`, so
+it was unaffected by the transport swap underneath. Unlike the fleet's
+other two `impit` pilots (`florida-tenders-monitor`,
+`australia-grantconnect-monitor`), this actor has no `test:live`
+script - live connectivity was instead re-verified manually this session
+with a throwaway script exercising the real `fetchTextWithRetry` against
+both live URLs.
+
 ## V2 delta engine (added 2026-09-08)
 
 This actor was one of 5 found on the account outside the original 9-actor V2 migration mandate. It already had a correctly-NAMED key-value store (no run-scoped `Actor.getValue()`/`setValue()` bug, unlike a sibling actor found the same day) and, uniquely among the 5, already had explicit dedicated 429/503 HTTP retry handling in `src/http.ts` - both confirmed by direct code read before any change was made, not assumed. What it lacked: real per-record classification (state was a flat `seenUids: string[]`, `event_type` hardcoded to `'SANCTION'` always).
