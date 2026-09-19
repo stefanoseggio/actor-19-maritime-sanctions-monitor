@@ -1,3 +1,5 @@
+import { log } from 'apify';
+
 import { classifyVesselRecord } from './delta.js';
 import { vesselFingerprintOf } from './fingerprint.js';
 import { fetchTextWithRetry, OFAC_DETAILS_BASE_URL, OFAC_SDN_XML_URL, UN_CONSOLIDATED_XML_URL } from './http.js';
@@ -7,9 +9,24 @@ import type { VesselEntry } from './state.js';
 import type { VesselDelistedRecord, VesselSanctionRawRecord } from './types.js';
 import { buildUnImoIndex, lookupUnMatches } from './unConsolidatedList.js';
 
+/**
+ * Below this fraction of the feed's own declared <Record_Count>, the number
+ * of <sdnEntry> elements actually found in the document (of ANY sdnType) is
+ * considered inconsistent with the file's own metadata - i.e. the response
+ * looks truncated/malformed rather than a genuine complete feed. Only used
+ * to decide whether a run's ZERO-vessel reading is trustworthy (see
+ * `suspectedFetchFailure` below) - a real, complete SDN.XML always has these
+ * two numbers match, so this is deliberately strict.
+ */
+const STRUCTURAL_COMPLETENESS_RATIO = 0.99;
+/** Below this many previously-tracked vessels, a drop in count is not treated as suspicious - too small a state to distinguish real churn from a fetch problem. */
+const MIN_PRIOR_COUNT_FOR_CRASH_CHECK = 5;
+/** A single run losing more than half of every previously-tracked vessel has no real-world precedent for this source (OFAC vessel delistings are historically sparse, a handful at a time) - treated as a suspected fetch failure rather than a real mass delisting. */
+const MAX_PLAUSIBLE_DROP_RATIO = 0.5;
+
 export interface FetchVesselRecordsResult {
     records: VesselSanctionRawRecord[];
-    /** Vessels previously listed (in persisted state) but absent from this run's fetch - only ever populated when `truncatedByMaxItems` is false, see below. */
+    /** Vessels previously listed (in persisted state) but absent from this run's fetch - only ever populated when both `truncatedByMaxItems` and `suspectedFetchFailure` are false, see below. */
     delistedRecords: VesselDelistedRecord[];
     /** Fingerprint entries for every uid actually present in the CURRENT fetch (the full OFAC feed, independent of programFilter/vesselNameContains/maxItems - see below), for state.ts to persist. */
     entriesThisRun: Record<string, VesselEntry>;
@@ -26,6 +43,23 @@ export interface FetchVesselRecordsResult {
      * discipline used across this fleet.
      */
     truncatedByMaxItems: boolean;
+    /**
+     * True when this run's OFAC fetch is suspected of being malformed,
+     * truncated, or otherwise broken - despite an HTTP 200 - rather than a
+     * genuine reduced/empty vessel census. A bot-check page, a
+     * redirected/wrong page, or a response cut off mid-download can all
+     * return HTTP 200 with a body that parses to zero (or far too few)
+     * vessel entries, which is otherwise indistinguishable from "every
+     * previously-tracked vessel really was delisted today." Gated on two
+     * independent signals (see the constants above): a zero-vessel reading
+     * is only trusted when the document's own declared Record_Count matches
+     * how many entries actually parsed out of it; a non-zero reading is
+     * flagged if it crashed to less than half of what was tracked last run.
+     * When true, DELISTED detection is skipped and state.ts's merge (not
+     * replace) path is used, so previously-tracked vessels are left as
+     * still-tracked instead of being wiped, exactly like `truncatedByMaxItems`.
+     */
+    suspectedFetchFailure: boolean;
 }
 
 function matchesProgramFilter(programs: string[], programFilter: string[] | undefined): boolean {
@@ -74,7 +108,7 @@ export async function fetchVesselRecords(
     // this actor's memory ceiling (.actor/actor.json) is set well above the
     // fleet's usual 256-512MB default - see that file's own note.
     const sdnXml = await fetchTextWithRetry(OFAC_SDN_XML_URL);
-    const { entries } = parseSdnXml(sdnXml);
+    const { entries, totalEntryCount, declaredRecordCount } = parseSdnXml(sdnXml);
 
     const unIndex = input.enrichWithUnConsolidatedList
         ? buildUnImoIndex(await fetchTextWithRetry(UN_CONSOLIDATED_XML_URL))
@@ -123,8 +157,35 @@ export async function fetchVesselRecords(
         }
     }
 
+    const priorTrackedCount = Object.keys(priorEntries).length;
+
+    // Zero vessel entries this run is only trustworthy as a genuine reading
+    // if the document otherwise looks like a real, complete SDN.XML fetch -
+    // i.e. its own declared Record_Count roughly matches how many <sdnEntry>
+    // elements (of any sdnType) actually parsed out of it. A bot-check page,
+    // an error/redirect-target page, or a response truncated mid-download
+    // will not.
+    const zeroVesselReadingLooksGenuine =
+        declaredRecordCount !== null && totalEntryCount >= declaredRecordCount * STRUCTURAL_COMPLETENESS_RATIO;
+
+    // A non-zero but dramatically-reduced vessel count has no structural
+    // signal to lean on (the document may be a perfectly well-formed partial
+    // SDN.XML, just truncated before most vessel entries were reached), so
+    // this instead leans on plausibility: OFAC vessel delistings are
+    // historically sparse, never a single-run mass wipe.
+    const vesselCountCrashed = priorTrackedCount >= MIN_PRIOR_COUNT_FOR_CRASH_CHECK && entries.length < priorTrackedCount * MAX_PLAUSIBLE_DROP_RATIO;
+
+    const suspectedFetchFailure =
+        priorTrackedCount > 0 && (entries.length === 0 ? !zeroVesselReadingLooksGenuine : vesselCountCrashed);
+
+    if (suspectedFetchFailure) {
+        log.warning(
+            `Suspected OFAC SDN.XML fetch failure this run: found ${entries.length} vessel entry/entries (of ${totalEntryCount} total <sdnEntry> element(s), declared Record_Count=${declaredRecordCount ?? 'missing'}) against ${priorTrackedCount} previously-tracked vessel(s). Treating this as a broken/malformed/truncated response rather than a real mass delisting - skipping DELISTED detection and preserving existing delta state for the vessels not seen this run.`,
+        );
+    }
+
     const delistedRecords: VesselDelistedRecord[] = [];
-    if (!truncatedByMaxItems) {
+    if (!truncatedByMaxItems && !suspectedFetchFailure) {
         for (const [uid, priorEntry] of Object.entries(priorEntries)) {
             if (entriesThisRun[uid]) continue;
             delistedRecords.push({
@@ -141,5 +202,5 @@ export async function fetchVesselRecords(
         }
     }
 
-    return { records, delistedRecords, entriesThisRun, truncatedByMaxItems };
+    return { records, delistedRecords, entriesThisRun, truncatedByMaxItems, suspectedFetchFailure };
 }

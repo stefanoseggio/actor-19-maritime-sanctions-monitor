@@ -49,11 +49,17 @@ async function run(): Promise<void> {
 
     let pushed = 0;
     try {
-        const { records, delistedRecords, entriesThisRun, truncatedByMaxItems } = await fetchVesselRecords(input, state.entries, now);
+        const { records, delistedRecords, entriesThisRun, truncatedByMaxItems, suspectedFetchFailure } = await fetchVesselRecords(
+            input,
+            state.entries,
+            now,
+        );
         log.info(
-            `Fetched ${records.length} vessel record(s) from the OFAC SDN List${ 
-                input.enrichWithUnConsolidatedList ? ' (UN Consolidated List cross-reference enabled)' : '' 
-                }${truncatedByMaxItems ? ' [maxItems truncated the walk - DELISTED detection skipped this run]' : ''}`,
+            `Fetched ${records.length} vessel record(s) from the OFAC SDN List${
+                input.enrichWithUnConsolidatedList ? ' (UN Consolidated List cross-reference enabled)' : ''
+                }${truncatedByMaxItems ? ' [maxItems truncated the walk - DELISTED detection skipped this run]' : ''}${
+                suspectedFetchFailure ? ' [SUSPECTED FETCH FAILURE - malformed/truncated OFAC response, DELISTED detection skipped and existing delta state preserved this run]' : ''
+            }`,
         );
         if (delistedRecords.length > 0) {
             log.info(`${delistedRecords.length} previously-listed vessel(s) no longer in the current OFAC feed - classified DELISTED.`);
@@ -105,13 +111,15 @@ async function run(): Promise<void> {
             }
         }
 
-        // A complete, untruncated census REPLACES state entirely (a vessel
-        // absent from entriesThisRun really is delisted, per the DELISTED
-        // computation above). A maxItems-truncated run instead MERGES onto
-        // prior state - entries beyond the truncation point were never
-        // re-visited this run and must not be forgotten, or they'd
-        // incorrectly look "new" again next time they ARE reached.
-        const finalEntries = truncatedByMaxItems ? { ...state.entries, ...entriesThisRun } : entriesThisRun;
+        // A complete, untruncated, trustworthy census REPLACES state entirely
+        // (a vessel absent from entriesThisRun really is delisted, per the
+        // DELISTED computation above). A maxItems-truncated run, OR a run
+        // whose fetch is a suspected failure (malformed/truncated-but-200
+        // OFAC response - see fetchVesselRecords.ts), instead MERGES onto
+        // prior state - entries not re-confirmed this run must not be
+        // forgotten (or, worse, wrongly wiped out and reported DELISTED)
+        // just because this run didn't genuinely re-see them.
+        const finalEntries = truncatedByMaxItems || suspectedFetchFailure ? { ...state.entries, ...entriesThisRun } : entriesThisRun;
 
         // Persisting delta state is a housekeeping step, not part of
         // extraction correctness - a failure here must never relabel an
